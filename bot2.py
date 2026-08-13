@@ -5,7 +5,7 @@ import threading
 from telegram import Bot
 import pandas as pd
 import numpy as np
-import yfinance as yf
+import requests
 from sklearn.ensemble import RandomForestClassifier
 
 # --- 0. RENDER UCHUN VEB-PORT ---
@@ -34,20 +34,28 @@ CHAT_ID = "301467534"
 bot = Bot(token=TELEGRAM_TOKEN)
 
 
-# --- 2. REAL NARXLARNI OLISH (RATE LIMIT CHEKLOVINING YECHIMI) ---
-def get_real_market_data(ticker="GC=F"):
+# --- 2. REAL NARXLARNI OLISH (BLOKIROVKALARSIC ZANJIR) ---
+def get_real_market_data():
     try:
-        # Ticker obyekti va User-Agent orqali blokirovkasiz yuklash
-        gold = yf.Ticker(ticker)
-        data = gold.history(period="5d", interval="15m")
+        # Yahoo Finance v8 chart API (User-Agent orqali blokirovka chetlab o'tiladi)
+        url = "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?range=5d&interval=15m"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
         
-        if data is None or data.empty:
-            return None
-
-        df = pd.DataFrame()
-        df['close'] = data['Close'].values.flatten()
-        df['high'] = data['High'].values.flatten()
-        df['low'] = data['Low'].values.flatten()
+        response = requests.get(url, headers=headers, timeout=10)
+        data = response.json()
+        
+        result = data['chart']['result'][0]
+        timestamps = result['timestamp']
+        indicators = result['indicators']['quote'][0]
+        
+        df = pd.DataFrame({
+            'close': indicators['close'],
+            'high': indicators['high'],
+            'low': indicators['low']
+        })
+        
         return df.dropna()
     except Exception as e:
         print(f"Ma'lumot olishda xatolik: {e}")
@@ -102,7 +110,7 @@ async def main():
                         msg = f"🔴 **SELL (SOTING)**\n\n📊 Kirish (Real Narx): {current_price}\n📉 Indikator: CM MacD Ult MTF\n🤖 AI mos keldi!"
                         await bot.send_message(chat_id=CHAT_ID, text=msg)
             else:
-                print("Ma'lumotlar hozircha yetarli emas yoki yuklanmadi.")
+                print("Ma'lumotlar olinmadi, keyingi tsikl kutilmoqda...")
 
         except Exception as e:
             print(f"Xatolik yuz berdi: {e}")
