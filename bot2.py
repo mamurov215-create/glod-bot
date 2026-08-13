@@ -8,35 +8,38 @@ import numpy as np
 import yfinance as yf
 from sklearn.ensemble import RandomForestClassifier
 
-# --- 0. RENDER UCHUN KICHIK VEB-PORT (Port binding xatosini yo'qotadi) ---
+# --- 0. RENDER UCHUN VEB-PORT VA SOG'LIQNI TEKSHIRISH (HEAD + GET) ---
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"Gold Bot is running!")
 
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
 def run_web_server():
     port = int(os.environ.get("PORT", 8080))
     server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
     server.serve_forever()
 
-# Veb serverni alohida oqimda ishga tushirish
 threading.Thread(target=run_web_server, daemon=True).start()
 
 
 # --- 1. TELEGRAM SOZLAMALARI ---
-TELEGRAM_TOKEN = "8839970219:AAGnkSAV1kVCPWXZY0aZZ9qf7PRDo" # Tokeningiz
-CHAT_ID = "301467534"                                     # Chat ID
+TELEGRAM_TOKEN = "8839970219:AAGnkSAV1kVCPWXZY0aZZ9qf7PRDo"
+CHAT_ID = "301467534"
 
 bot = Bot(token=TELEGRAM_TOKEN)
 
 
-# --- 2. INTERNETDAN REAL NARXLARNI OLISH ---
+# --- 2. REAL NARXLARNI OLISH (XATOLIKLARNI O'RASH BILAN) ---
 def get_real_market_data(ticker="GC=F", interval="15m", period="5d"):
-    """yfinance orqali Oltin (GC=F) ning real vaqt narxlarini yuklash"""
     try:
-        data = yf.download(tickers=ticker, period=period, interval=interval, progress=False)
-        if data.empty:
+        # Yahoo Finance so'rovi uchun timeout va retry
+        data = yf.download(tickers=ticker, period=period, interval=interval, progress=False, ignore_tz=True)
+        if data is None or data.empty:
             return None
 
         df = pd.DataFrame()
@@ -49,7 +52,7 @@ def get_real_market_data(ticker="GC=F", interval="15m", period="5d"):
         return None
 
 
-# --- 3. CHRISMOODY MACD INDIKATORI ---
+# --- 3. MACD INDIKATORI ---
 def add_custom_macd(df, fast=12, slow=26, signal=9):
     fast_ema = df['close'].ewm(span=fast, adjust=False).mean()
     slow_ema = df['close'].ewm(span=slow, adjust=False).mean()
@@ -61,7 +64,7 @@ def add_custom_macd(df, fast=12, slow=26, signal=9):
     return df
 
 
-# --- 4. SUN'IY INTELLEKT (AI) MODELINI TAYYORLASH ---
+# --- 4. SUN'IY INTELLEKT (AI) MODELI ---
 def train_ai_model(df):
     df['target'] = np.where(df['close'].shift(-1) > df['close'], 1, 0)
     features = df[['macd', 'macd_signal', 'macd_hist']].dropna()
@@ -72,9 +75,9 @@ def train_ai_model(df):
     return model
 
 
-# --- 5. ASOSIY BOOT/ISHLASH SIKLI ---
+# --- 5. ASOSIY SIKL ---
 async def main():
-    print("Bot ishga tushdi...")
+    print("Bot qayta ishga tushdi va kuzatmoqda...")
     last_signal = None
 
     while True:
@@ -88,26 +91,23 @@ async def main():
                 if not latest_features.empty:
                     prediction = model.predict(latest_features)[0]
                     macd_above = df['macd_above'].iloc[-1]
+                    current_price = round(df['close'].iloc[-1], 2)
 
-                    current_price = df['close'].iloc[-1]
-
-                    # BUY Signal
                     if macd_above and prediction == 1 and last_signal != "BUY":
-                        msg = f"🟢 **BUY SIGNAL (OLTIN)**\nNarx: {current_price}\nMACD va AI mos keldi!"
+                        msg = f"🟢 **BUY SIGNAL (OLTIN)**\nNarx: ${current_price}\nMACD va AI mos keldi!"
                         await bot.send_message(chat_id=CHAT_ID, text=msg)
                         last_signal = "BUY"
 
-                    # SELL Signal
                     elif not macd_above and prediction == 0 and last_signal != "SELL":
-                        msg = f"🔴 **SELL SIGNAL (OLTIN)**\nNarx: {current_price}\nMACD va AI mos keldi!"
+                        msg = f"🔴 **SELL SIGNAL (OLTIN)**\nNarx: ${current_price}\nMACD va AI mos keldi!"
                         await bot.send_message(chat_id=CHAT_ID, text=msg)
                         last_signal = "SELL"
 
         except Exception as e:
             print(f"Xatolik yuz berdi: {e}")
 
-        # Yahoo Finance bloklamasligi va cheklovga tushmaslik uchun 60 soniya kutish
-        await asyncio.sleep(60)
+        # Tekshiruvlar orasida 2 daqiqa kutiladi
+        await asyncio.sleep(120)
 
 if __name__ == "__main__":
     asyncio.run(main())
