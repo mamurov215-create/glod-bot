@@ -1,16 +1,20 @@
 import asyncio
 import os
+import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from telegram import Bot
 import requests
 
-# --- 0. RENDER UCHUN PORT ---
+# Terminal loglari darhol ko'rinishi uchun
+sys.stdout.reconfigure(line_buffering=True)
+
+# --- 0. RENDER UCHUN VEB-PORT ---
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Gold Bot Active")
+        self.wfile.write(b"Gold Bot is running!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -24,51 +28,41 @@ def run_web_server():
 threading.Thread(target=run_web_server, daemon=True).start()
 
 
-# --- 1. TELEGRAM ---
+# --- 1. TELEGRAM SOZLAMALARI ---
 TELEGRAM_TOKEN = "8839970219:AAGnkSAV1kVCPWXZY0aZZ9qf7PRDo"
 CHAT_ID = "301467534"
+
 bot = Bot(token=TELEGRAM_TOKEN)
 
 
-# --- 2. OLTIN NARXINI OLISH (RESERVED BACKUPS BILAN) ---
+# --- 2. GOLD NARXINI OLISH ---
 def get_gold_price():
-    # 1-manba: Yahoo v8
+    url = "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?range=1d&interval=15m"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"
+    }
     try:
-        url = "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?range=1d&interval=15m"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(url, headers=headers, timeout=8)
+        res = requests.get(url, headers=headers, timeout=10)
         data = res.json()
         closes = data['chart']['result'][0]['indicators']['quote'][0]['close']
-        valid = [c for c in closes if c is not None]
-        if valid:
-            return round(valid[-1], 2)
+        valid_closes = [c for c in closes if c is not None]
+        if valid_closes:
+            return round(valid_closes[-1], 2)
     except Exception as e:
-        print(f"Yahoo v8 xatosi: {e}")
-
-    # 2-manba: Yahoo v7
-    try:
-        url2 = "https://query2.finance.yahoo.com/v7/finance/quote?symbols=GC=F"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res2 = requests.get(url2, headers=headers, timeout=8)
-        price = res2.json()['quoteResponse']['result'][0]['regularMarketPrice']
-        return round(price, 2)
-    except Exception as e:
-        print(f"Yahoo v7 xatosi: {e}")
-
+        print(f"Narx olishda xatolik: {e}", flush=True)
     return None
 
 
 # --- 3. ASOSIY SIKL ---
 async def main():
-    print(">>> BOT TIZIMI ISHGA TUSHDI! <<<")
-    
+    print(">>> BOT SIKLI ISHGA TUSHDI <<<", flush=True)
+
     while True:
         try:
             price = get_gold_price()
-            
             if price is not None:
-                tp = round(price + 12.0, 2)
-                sl = round(price - 8.0, 2)
+                tp = round(price + 15.0, 2)
+                sl = round(price - 10.0, 2)
 
                 msg = (
                     f"🟢 **BUY (SOTIB OLING)**\n\n"
@@ -80,14 +74,14 @@ async def main():
                 )
 
                 await bot.send_message(chat_id=CHAT_ID, text=msg)
-                print(f"✅ SIGNAL TELEGRAM'GA MUVAFFAQIYATLI YUBORILDI! Narx: {price}")
+                print(f"✅ SIGNAL YUBORILDI! Narx: {price}", flush=True)
             else:
-                print("❌ Narxni olishda muammo bo'ldi!")
+                print("⚠️ Narx olinmadi, qayta uriniladi...", flush=True)
 
-        except Exception as err:
-            print(f"❌ Kutilmagan xatolik: {err}")
+        except Exception as e:
+            print(f"❌ Xatolik yuz berdi: {e}", flush=True)
 
-        print("⏰ 15 daqiqa kutilmoqda...")
+        # Har 15 daqiqada (900 soniya)
         await asyncio.sleep(900)
 
 if __name__ == "__main__":
