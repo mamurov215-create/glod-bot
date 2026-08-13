@@ -6,15 +6,15 @@ import threading
 from telegram import Bot
 import requests
 
-# Terminal loglari darhol ko'rinishi uchun
+# Loglar Render'da darhol ko'rinishi uchun
 sys.stdout.reconfigure(line_buffering=True)
 
-# --- 0. RENDER UCHUN VEB-PORT ---
+# --- 0. RENDER PORT ---
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Gold Bot is running!")
+        self.wfile.write(b"Gold Bot Active")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -29,25 +29,23 @@ threading.Thread(target=run_web_server, daemon=True).start()
 
 
 # --- 1. TELEGRAM SOZLAMALARI ---
-TELEGRAM_TOKEN = "8839970219:AAGnkSAV1kVCPWXZY0aZZ9qf7PRDo"
+TELEGRAM_TOKEN = "8839970219:AAEP-8mGkGSu4NRfYf4IUzWz899117WiaVs"
 CHAT_ID = "301467534"
 
 bot = Bot(token=TELEGRAM_TOKEN)
 
 
-# --- 2. GOLD NARXINI OLISH ---
+# --- 2. NARX OLISH ---
 def get_gold_price():
     url = "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?range=1d&interval=15m"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"
-    }
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
         res = requests.get(url, headers=headers, timeout=10)
         data = res.json()
         closes = data['chart']['result'][0]['indicators']['quote'][0]['close']
-        valid_closes = [c for c in closes if c is not None]
-        if valid_closes:
-            return round(valid_closes[-1], 2)
+        valid = [c for c in closes if c is not None]
+        if valid:
+            return round(valid[-1], 2)
     except Exception as e:
         print(f"Narx olishda xatolik: {e}", flush=True)
     return None
