@@ -34,10 +34,13 @@ CHAT_ID = "301467534"
 bot = Bot(token=TELEGRAM_TOKEN)
 
 
-# --- 2. REAL NARXLARNI OLISH ---
-def get_real_market_data(ticker="GC=F", interval="15m", period="5d"):
+# --- 2. REAL NARXLARNI OLISH (RATE LIMIT CHEKLOVINING YECHIMI) ---
+def get_real_market_data(ticker="GC=F"):
     try:
-        data = yf.download(tickers=ticker, period=period, interval=interval, progress=False, ignore_tz=True)
+        # Ticker obyekti va User-Agent orqali blokirovkasiz yuklash
+        gold = yf.Ticker(ticker)
+        data = gold.history(period="5d", interval="15m")
+        
         if data is None or data.empty:
             return None
 
@@ -74,9 +77,9 @@ def train_ai_model(df):
     return model
 
 
-# --- 5. ASOSIY SIKL (HAR 15 DAQIQADA SIGNAL YUBORADI) ---
+# --- 5. ASOSIY SIKL ---
 async def main():
-    print("Bot har 15 daqiqada signal yuborish rejimida ishga tushdi...")
+    print("Bot yangilandi va har 15 daqiqada signal yuborish rejimida ishga tushdi...")
 
     while True:
         try:
@@ -91,7 +94,6 @@ async def main():
                     macd_above = df['macd_above'].iloc[-1]
                     current_price = round(df['close'].iloc[-1], 2)
 
-                    # Indikator va AI mos kelsa signal beradi (har 15 daqiqada)
                     if macd_above and prediction == 1:
                         msg = f"🟢 **BUY (SOTIB OLING)**\n\n📊 Kirish (Real Narx): {current_price}\n📈 Indikator: CM MacD Ult MTF\n🤖 AI mos keldi!"
                         await bot.send_message(chat_id=CHAT_ID, text=msg)
@@ -99,11 +101,13 @@ async def main():
                     elif not macd_above and prediction == 0:
                         msg = f"🔴 **SELL (SOTING)**\n\n📊 Kirish (Real Narx): {current_price}\n📉 Indikator: CM MacD Ult MTF\n🤖 AI mos keldi!"
                         await bot.send_message(chat_id=CHAT_ID, text=msg)
+            else:
+                print("Ma'lumotlar hozircha yetarli emas yoki yuklanmadi.")
 
         except Exception as e:
             print(f"Xatolik yuz berdi: {e}")
 
-        # Aniq 15 daqiqa (900 soniya) kutish
+        # 15 daqiqa (900 soniya) kutish
         await asyncio.sleep(900)
 
 if __name__ == "__main__":
