@@ -15,7 +15,6 @@ import matplotlib.pyplot as plt
 sys.stdout.reconfigure(line_buffering=True)
 
 # --- 0. OPENAI (SUN'IY INTELLEKT) SOZLAMASI ---
-# Kalit xavfsizlik uchun Render muhitidan (Environment Variables) o'qiladi
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 def get_ai_gold_analysis(signal_type, price, rsi):
