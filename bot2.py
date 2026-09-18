@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 sys.stdout.reconfigure(line_buffering=True)
 
 # --- 0. OPENAI (SUN'IY INTELLEKT) SOZLAMASI ---
+# Kalit xavfsizlik uchun Render muhitidan (Environment Variables) o'qiladi
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 def get_ai_gold_analysis(signal_type, price, rsi):
@@ -90,7 +91,7 @@ def analyze_market_15m():
         }).dropna()
 
         if len(df) < 100:
-            return None, None
+            return None, None, None, None
 
         df['ema_200'] = df['close'].ewm(span=200, adjust=False).mean()
         exp1 = df['close'].ewm(span=12, adjust=False).mean()
@@ -151,7 +152,6 @@ async def main():
                     ai_comment = get_ai_gold_analysis(signal_type, price, rsi_val)
                     chart_file = draw_chart(df, signal_type, price)
 
-                    # Emoji va sarlavhani holatga qarab o'zgartiramiz
                     if signal_type == "BUY":
                         status_text = "🟢 BUY (O'sish sharti bajarildi)"
                     elif signal_type == "SELL":
@@ -175,7 +175,6 @@ async def main():
         except Exception as e:
             print(f"❌ Xatolik: {e}", flush=True)
 
-        # Har 15 daqiqada (900 soniya) ishlaydi
         await asyncio.sleep(900)
 
 if __name__ == "__main__":
