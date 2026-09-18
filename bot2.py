@@ -7,24 +7,24 @@ import threading
 from telegram import Bot
 import requests
 import pandas as pd
-import openai
+from openai import OpenAI
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 sys.stdout.reconfigure(line_buffering=True)
 
-# --- 0. OPENAI (SUN'IY INTELLEKT) SOZLAMASI ---
-openai.api_key = os.environ.get("OPENAI_API_KEY")
+# --- 0. OPENAI CLIENT (YANGI USUL) ---
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 def get_ai_gold_analysis(signal_type, price, rsi):
     try:
-        prompt = f"Oltin (XAUUSD) bozorining 15 daqiqalik holati: Status - {signal_type}, Narx: {price}, RSI: {rsi}. Shu holat bo'yicha qisqacha professional tahlil va bashorat yozib ber."
+        prompt = f"Oltin (XAUUSD) bozorining 15 daqiqalik holati: Status - {signal_type}, Narx: {price}, RSI: {rsi}. Shu holat bo'yicha o'zbek tilida qisqacha professional tahlil va bashorat yozib ber."
         
-        response = openai.chat.completions.create(
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "Siz tajribali oltin (XAUUSD) tahlilchisisiz. Har 15 daqiqalik holat bo'yicha qisqa va aniq maslahat berasiz."},
+                {"role": "system", "content": "Siz tajribali oltin (XAUUSD) tahlilchisisiz. Har 15 daqiqalik holat bo'yicha o'zbek tilida qisqa va aniq maslahat berasiz."},
                 {"role": "user", "content": prompt}
             ],
             max_tokens=200
