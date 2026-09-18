@@ -1,12 +1,14 @@
 import os
+import time
 from groq import Groq
+import requests
 
-# Kalitni shaxsan o'zi kiritmaymiz, u maxfiy joydan o'qiladi
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+# Groq mijozini sozlash (Render'dagi GROQ_API_KEY dan o'qiydi)
+groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 def ai_tahlil_qil(yangilik):
     try:
-        chat_completion = client.chat.completions.create(
+        chat_completion = groq_client.chat.completions.create(
             messages=[
                 {
                     "role": "system",
@@ -21,4 +23,10 @@ def ai_tahlil_qil(yangilik):
         )
         return chat_completion.choices[0].message.content
     except Exception as e:
-        return f"Tahlil qilishda xatolik: {e}"
+        return f"Tahlil xatosi: {e}"
+
+print(">>> BOT TOZA HOLATDA ISHGA TUSHDI <<<")
+
+# Bu yerda sizning asosiy bot kodlaringiz (15 daqiqalik sikl va boshqalar) ishlaydi
+while True:
+    time.sleep(900)  # 15 daqiqa kutish
