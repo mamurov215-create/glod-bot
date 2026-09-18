@@ -71,3 +71,26 @@ if __name__ == "__main__":
 
   # Botning asosiy siklini ishga tushiramiz
   background_bot_loop()
+import time
+
+
+def background_bot_loop():
+  print(">>> 15M INTERVAL BOT WITH AI & CHARTS STARTED <<<")
+
+  # 1. Bot ishga tushishi bilan DARXOL 1-chi signalni yuborish:
+  try:
+    print("✅ Birinchi signal yuborilmoqda...")
+    # Bu yerga narxni olib, tahlil qilib, Telegramga yuboradigan funksiyangizni yozasiz
+    # Masalan: tahlil_va_signalni_yuborish()
+  except Exception as e:
+    print(f"Birinchi signalni yuborishda xatolik: {e}")
+
+  # 2. Keyin 15 daqiqalik cheksiz sikl boshlanadi
+  while True:
+    try:
+      time.sleep(900)  # 15 daqiqa (900 soniya) kutish
+      print("✅ Har 15 daqiqalik tahlil yuborildi!")
+      # Keyingi 15 daqiqalik signal kodi shu yerda ishlaydi
+
+    except Exception as e:
+      print(f"Xatolik yuz berdi: {e}")
