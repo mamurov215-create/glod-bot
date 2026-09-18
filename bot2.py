@@ -7,15 +7,54 @@ import threading
 from telegram import Bot
 import requests
 import pandas as pd
+import openai
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 sys.stdout.reconfigure(line_buffering=True)
 
-# --- 0. RENDER PORT SERVERI ---
+# --- 0. OPENAI (SUN'IY INTELLEKT) SOZLAMASI ---
+openai.api_key = os.environ.get("OPENAI_API_KEY")
+
+def get_ai_gold_analysis(signal_type, price, rsi):
+    try:
+        prompt = f"Oltin (XAUUSD) bozorining 15 daqiqalik holati: Status - {signal_type}, Narx: {price}, RSI: {rsi}. Shu holat bo'yicha qisqacha professional tahlil va bashorat yozib ber."
+        
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Siz tajribali oltin (XAUUSD) tahlilchisisiz. Har 15 daqiqalik holat bo'yicha qisqa va aniq maslahat berasiz."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=200
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"AI tahlil xatosi: {e}"
+
+# --- Rasm chizish funksiyasi ---
+def draw_chart(df, signal_type, price):
+    plt.figure(figsize=(10, 5))
+    plt.plot(df['close'].values[-50:], label='Narx (Close)', color='blue', linewidth=2)
+    plt.plot(df['ema_200'].values[-50:], label='EMA 200', color='orange', linestyle='--')
+    plt.title(f"Gold (XAUUSD) 15M - Status: {signal_type} | Narx: {price}")
+    plt.xlabel("So'nggi 15m свечалар")
+    plt.ylabel("Narx ($)")
+    plt.legend()
+    plt.grid(True)
+    
+    chart_path = "gold_chart.png"
+    plt.savefig(chart_path)
+    plt.close()
+    return chart_path
+
+# --- 1. RENDER PORT SERVERI ---
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Gold Trend-Filtered 15M Bot Active")
+        self.wfile.write(b"Gold Bot Every 15M Active")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -29,15 +68,14 @@ def run_web_server():
 threading.Thread(target=run_web_server, daemon=True).start()
 
 
-# --- 1. TELEGRAM SOZLAMALARI ---
+# --- 2. TELEGRAM SOZLAMALARI ---
 TELEGRAM_TOKEN = "8839970219:AAEP-8mGkGSu4NRfYf4IUzWz899117WiaVs"
 CHAT_ID = "301467534"
 bot = Bot(token=TELEGRAM_TOKEN)
 
 
-# --- 2. 15-DAQIQALIK TAHLIL VA TREND FILTRI ---
+# --- 3. 15-DAQIQALIK TAHLIL ---
 def analyze_market_15m():
-    # 15 daqiqalik (15m) taymfreym kotirovkasi
     url = "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?range=5d&interval=15m"
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
@@ -52,18 +90,14 @@ def analyze_market_15m():
         }).dropna()
 
         if len(df) < 100:
-            return None
+            return None, None
 
-        # 1. Global Trend Filtri (EMA 200)
         df['ema_200'] = df['close'].ewm(span=200, adjust=False).mean()
-
-        # 2. Impuls Indicator (MACD)
         exp1 = df['close'].ewm(span=12, adjust=False).mean()
         exp2 = df['close'].ewm(span=26, adjust=False).mean()
         df['macd'] = exp1 - exp2
         df['macd_signal'] = df['macd'].ewm(span=9, adjust=False).mean()
 
-        # 3. RSI (14)
         delta = df['close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -76,92 +110,72 @@ def analyze_market_15m():
         last_price = round(curr['close'], 2)
         rsi_val = round(curr['rsi'], 1)
 
-        # STRICT TREND FILTERING (Trendga qarshi signal YUQ):
-        
-        # BUY Shartlari:
-        # - Narx EMA 200 dan ALBATTA yuqorida bo'lishi shart (Up-trend)
-        # - MACD signal liniyasini pastdan yuqoriga kesib o'tgan bo'lishi shart
-        # - RSI 35 va 60 orasida (Haddan tashqari sotib olinmagan)
         buy_signal = (
             (curr['close'] > curr['ema_200']) and
             (prev['macd'] <= prev['macd_signal']) and (curr['macd'] > curr['macd_signal']) and
             (35 < curr['rsi'] < 60)
         )
 
-        # SELL Shartlari:
-        # - Narx EMA 200 dan ALBATTA pastda bo'lishi shart (Down-trend)
-        # - MACD signal liniyasini yuqoridan pastga kesib o'tgan bo'lishi shart
-        # - RSI 40 va 65 orasida
         sell_signal = (
             (curr['close'] < curr['ema_200']) and
             (prev['macd'] >= prev['macd_signal']) and (curr['macd'] < curr['macd_signal']) and
             (40 < curr['rsi'] < 65)
         )
 
-        # Oltin uchun realizmga mos TP (4$) va SL (3$) masofasi
         if buy_signal:
-            tp = round(last_price + 4.0, 2)
-            sl = round(last_price - 3.0, 2)
-            return "BUY", last_price, tp, sl, rsi_val
-
+            return "BUY", last_price, rsi_val, df
         elif sell_signal:
-            tp = round(last_price - 4.0, 2)
-            sl = round(last_price + 3.0, 2)
-            return "SELL", last_price, tp, sl, rsi_val
-
-        return "HOLD", last_price, 0, 0, rsi_val
+            return "SELL", last_price, rsi_val, df
+        else:
+            return "HOLD", last_price, rsi_val, df
 
     except Exception as e:
         print(f"Tahlil xatosi: {e}", flush=True)
-        return None
+        return None, None, None, None
 
 
-# --- 3. ASOSIY SIKL ---
+# --- 4. ASOSIY SIKL ---
 async def main():
-    print(">>> 15M TREND-FILTERED GOLD BOT ISHGA TUSHDI <<<", flush=True)
+    print(">>> 15M INTERVAL BOT WITH AI & CHARTS STARTED <<<", flush=True)
 
     while True:
         try:
             weekday = datetime.utcnow().weekday()
 
             if weekday in [5, 6]:
-                print("🛑 Bugun dam olish kuni (bozor yopiq).", flush=True)
+                print("🛑 Dam olish kuni (bozor yopiq).", flush=True)
             else:
-                res = analyze_market_15m()
-                if res is not None:
-                    signal_type, price, tp, sl, rsi_val = res
+                signal_type, price, rsi_val, df = analyze_market_15m()
+                
+                if df is not None:
+                    ai_comment = get_ai_gold_analysis(signal_type, price, rsi_val)
+                    chart_file = draw_chart(df, signal_type, price)
 
+                    # Emoji va sarlavhani holatga qarab o'zgartiramiz
                     if signal_type == "BUY":
-                        msg = (
-                            f"🟢 **KUCHLI BUY SIGNAL (15M)**\n\n"
-                            f"📊 Kirish narxi: {price}\n"
-                            f"🎯 Take Profit (TP): {tp}\n"
-                            f"🛑 Stop Loss (SL): {sl}\n\n"
-                            f"📈 Trend: Ko'tarilish (EMA200 yuqorida)\n"
-                            f"📐 RSI: {rsi_val}"
-                        )
-                        await bot.send_message(chat_id=CHAT_ID, text=msg)
-                        print(f"✅ BUY SIGNAL YUBORILDI! Narx: {price}", flush=True)
-
+                        status_text = "🟢 BUY (O'sish sharti bajarildi)"
                     elif signal_type == "SELL":
-                        msg = (
-                            f"🔴 **KUCHLI SELL SIGNAL (15M)**\n\n"
-                            f"📊 Kirish narxi: {price}\n"
-                            f"🎯 Take Profit (TP): {tp}\n"
-                            f"🛑 Stop Loss (SL): {sl}\n\n"
-                            f"📉 Trend: Tushish (EMA200 pastda)\n"
-                            f"📐 RSI: {rsi_val}"
-                        )
-                        await bot.send_message(chat_id=CHAT_ID, text=msg)
-                        print(f"✅ SELL SIGNAL YUBORILDI! Narx: {price}", flush=True)
-
+                        status_text = "🔴 SELL (Tushish sharti bajarildi)"
                     else:
-                        print(f"ℹ️ Neytral holat (Narx: {price}, RSI: {rsi_val}). Shartlar mos kelmadi.", flush=True)
+                        status_text = "⚪ HOLD (Neytral / Kutish)"
+
+                    msg = (
+                        f"📊 **15-DAQIQALIK OLTIN TAHLILI (AI)**\n\n"
+                        f"📌 Holat: {status_text}\n"
+                        f"💰 Hozirgi narx: {price}\n"
+                        f"📐 RSI: {rsi_val}\n\n"
+                        f"🤖 **Sun'iy Intellekt Sharhi:**\n{ai_comment}"
+                    )
+
+                    with open(chart_file, 'rb') as photo:
+                        await bot.send_photo(chat_id=CHAT_ID, photo=photo, caption=msg)
+                    
+                    print(f"✅ Har 15 daqiqalik tahlil yuborildi! Narx: {price}, Holat: {signal_type}", flush=True)
 
         except Exception as e:
-            print(f"❌ Xatolik yuz berdi: {e}", flush=True)
+            print(f"❌ Xatolik: {e}", flush=True)
 
-        # Har 15 daqiqada (900 soniya) tekshiradi va signal beradi
+        # Har 15 daqiqada (900 soniya) ishlaydi
         await asyncio.sleep(900)
 
 if __name__ == "__main__":
