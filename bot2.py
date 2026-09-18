@@ -14,8 +14,10 @@ import matplotlib.pyplot as plt
 
 sys.stdout.reconfigure(line_buffering=True)
 
-# --- 0. OPENAI CLIENT (YANGI USUL) ---
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# --- 0. OPENAI CLIENT ---
+# Render Environment'dan kalitni xavfsiz o'qiydi
+api_key = os.environ.get("OPENAI_API_KEY")
+client = OpenAI(api_key=api_key)
 
 def get_ai_gold_analysis(signal_type, price, rsi):
     try:
@@ -138,43 +140,4 @@ def analyze_market_15m():
 async def main():
     print(">>> 15M INTERVAL BOT WITH AI & CHARTS STARTED <<<", flush=True)
 
-    while True:
-        try:
-            weekday = datetime.utcnow().weekday()
-
-            if weekday in [5, 6]:
-                print("🛑 Dam olish kuni (bozor yopiq).", flush=True)
-            else:
-                signal_type, price, rsi_val, df = analyze_market_15m()
-                
-                if df is not None:
-                    ai_comment = get_ai_gold_analysis(signal_type, price, rsi_val)
-                    chart_file = draw_chart(df, signal_type, price)
-
-                    if signal_type == "BUY":
-                        status_text = "🟢 BUY (O'sish sharti bajarildi)"
-                    elif signal_type == "SELL":
-                        status_text = "🔴 SELL (Tushish sharti bajarildi)"
-                    else:
-                        status_text = "⚪ HOLD (Neytral / Kutish)"
-
-                    msg = (
-                        f"📊 **15-DAQIQALIK OLTIN TAHLILI (AI)**\n\n"
-                        f"📌 Holat: {status_text}\n"
-                        f"💰 Hozirgi narx: {price}\n"
-                        f"📐 RSI: {rsi_val}\n\n"
-                        f"🤖 **Sun'iy Intellekt Sharhi:**\n{ai_comment}"
-                    )
-
-                    with open(chart_file, 'rb') as photo:
-                        await bot.send_photo(chat_id=CHAT_ID, photo=photo, caption=msg)
-                    
-                    print(f"✅ Har 15 daqiqalik tahlil yuborildi! Narx: {price}, Holat: {signal_type}", flush=True)
-
-        except Exception as e:
-            print(f"❌ Xatolik: {e}", flush=True)
-
-        await asyncio.sleep(900)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    while: # <--- OOPS, while True bo'lishi kerak, quyida to'g'irlandi:
