@@ -12,9 +12,14 @@ from flask import Flask, jsonify
 from groq import Groq
 
 # ---------------- SOZLAMALAR ----------------
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
+def env(nom):
+    """Environment o'zgaruvchisini o'qiydi, bo'sh joylarni olib tashlaydi."""
+    return (os.environ.get(nom) or "").strip()
+
+
+GROQ_API_KEY = env("GROQ_API_KEY")
+TELEGRAM_TOKEN = env("TELEGRAM_TOKEN")
+CHAT_ID = env("CHAT_ID")
 
 SYMBOL = "GC=F"          # oltin fyucherslari (XAUUSD ga yaqin narx)
 INTERVAL_SEC = 900       # 15 daqiqa
@@ -26,10 +31,16 @@ TP_ATR = 3.0             # take-profit = 3 * ATR (risk:foyda = 1:2)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s")
 log = logging.getLogger("goldbot")
 
-groq_client = Groq(api_key=GROQ_API_KEY)
 app = Flask(__name__)
+groq_client = None
 
 holat = {"oxirgi_signal": None, "oxirgi_vaqt": None, "oxirgi_xato": None}
+
+
+def yetishmayotganlar():
+    return [n for n, v in [("GROQ_API_KEY", GROQ_API_KEY),
+                           ("TELEGRAM_TOKEN", TELEGRAM_TOKEN),
+                           ("CHAT_ID", CHAT_ID)] if not v]
 
 
 # ---------------- VEB-SERVER (Render + UptimeRobot) ----------------
@@ -40,7 +51,7 @@ def home():
 
 @app.route("/status")
 def status():
-    return jsonify(holat)
+    return jsonify({**holat, "yetishmayotgan_kalitlar": yetishmayotganlar()})
 
 
 def run_web():
@@ -59,10 +70,13 @@ def malumot_ol():
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
     df = df.dropna()
+    if df.empty:
+        return None
 
     # Bozor yopiqligini tekshirish (oxirgi sham 45 daqiqadan eski bo'lsa)
-    yosh = pd.Timestamp.now(tz="UTC") - df.index[-1].tz_convert("UTC")
-    if yosh > pd.Timedelta(minutes=45):
+    oxirgi = df.index[-1]
+    oxirgi = oxirgi.tz_localize("UTC") if oxirgi.tzinfo is None else oxirgi.tz_convert("UTC")
+    if pd.Timestamp.now(tz="UTC") - oxirgi > pd.Timedelta(minutes=45):
         return None
 
     # Hozir shakllanayotgan (yopilmagan) shamni tashlab yuboramiz
@@ -107,6 +121,10 @@ def malumot_ol():
 # ---------------- SUN'IY INTELLEKT ----------------
 def ai_tahlil_qil(m):
     """AI faqat yo'nalish va izoh beradi. Raqamlarni (SL/TP) kod hisoblaydi."""
+    global groq_client
+    if groq_client is None:
+        groq_client = Groq(api_key=GROQ_API_KEY)
+
     prompt = (
         "Oltin (XAUUSD) 15 daqiqalik grafik ma'lumoti:\n"
         f"{json.dumps(m, ensure_ascii=False)}\n\n"
@@ -150,7 +168,7 @@ def daraja_hisobla(signal, narx, atr):
 # ---------------- TELEGRAM ----------------
 def telegramga_yubor(matn):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    for urinish in range(3):
+    for _ in range(3):
         try:
             r = requests.post(url, data={"chat_id": CHAT_ID, "text": matn}, timeout=20)
             if r.ok:
@@ -175,7 +193,6 @@ def signal_yubor():
 
     holat["oxirgi_vaqt"] = datetime.now(timezone.utc).isoformat()
 
-    # Faqat yangi va yetarlicha ishonchli signal yuboriladi (takrorlanmaydi)
     if signal == "KUTISH" or ishonch < MIN_ISHONCH:
         holat["oxirgi_signal"] = "KUTISH"
         return
@@ -202,19 +219,25 @@ def signal_yubor():
 
 def keyingi_shamgacha_kut():
     """Keyingi 15 daqiqalik sham yopilishini kutadi (+15 soniya zaxira)."""
-    kut = INTERVAL_SEC - (time.time() % INTERVAL_SEC) + 15
-    time.sleep(kut)
+    time.sleep(INTERVAL_SEC - (time.time() % INTERVAL_SEC) + 15)
 
 
 def background_bot_loop():
     log.info(">>> 15M GOLD AI BOT STARTED <<<")
-    if not all([GROQ_API_KEY, TELEGRAM_TOKEN, CHAT_ID]):
-        log.error("GROQ_API_KEY, TELEGRAM_TOKEN yoki CHAT_ID yo'q! Render Environment'ni tekshiring.")
-    else:
-        telegramga_yubor("✅ Oltin AI bot ishga tushdi. Signal yangi sham yopilganda keladi.")
-
+    birinchi = True
     while True:
         try:
+            yetmaydi = yetishmayotganlar()
+            if yetmaydi:
+                # Kalitlar Render Environment'ga qo'shilguncha signal yuborilmaydi
+                log.error(f"Yetishmayapti: {', '.join(yetmaydi)}")
+                time.sleep(60)
+                continue
+
+            if birinchi:
+                telegramga_yubor("✅ Oltin AI bot ishga tushdi. Signal yangi sham yopilganda keladi.")
+                birinchi = False
+
             signal_yubor()
             holat["oxirgi_xato"] = None
         except Exception as e:
