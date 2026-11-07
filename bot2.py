@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 # TELEGRAM BOT SOZLAMALARI
 TELEGRAM_BOT_TOKEN = "8839970219:AAHtbNDmsahAOr1Mw86EA7DF-AYFyr2Bh98"
-TELEGRAM_CHAT_ID = "SIZNING_CHAT_IDINGIZ"  # Shu yerga o'z Chat ID'ingizni yozing (masalan: "123456789")
+TELEGRAM_CHAT_ID = "SIZNING_CHAT_IDINGIZ"  301467534
 
 def telegramga_xabar_yuborish(matn):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
