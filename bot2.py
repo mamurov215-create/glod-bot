@@ -1,70 +1,58 @@
-//@version=5
-indicator("SMC BUY SELL Mobil & Bot", overlay=true, max_labels_count=100, max_lines_count=50)
+from flask import Flask, request
+import requests
+import os
+import threading
+import time
 
-// --- SOZLAMALAR ---
-swingLen  = input.int(5, "Swing uzunligi", minval=2, group="Asosiy sozlamalar")
-emaLen    = input.int(200, "Trend EMA", group="Asosiy sozlamalar")
-useVol    = input.bool(true, "Hajm filtri", group="Filtrlar")
-useRsi    = input.bool(true, "RSI filtri", group="Filtrlar")
-onlyChoch = input.bool(false, "Faqat CHoCH (Struktura o'zgarishi)", group="Filtrlar")
-slMult    = input.float(1.5, "SL (ATR x)", step=0.1, group="Risk boshqaruvi")
-rr        = input.float(2.0, "Risk:Reward (TP)", step=0.5, group="Risk boshqaruvi")
-cool      = input.int(5, "Pauza (shamlar)", group="Boshqaruv")
+app = Flask(__name__)
 
-// --- HISOBLashlar ---
-atr = ta.atr(14)
-ema = ta.ema(close, emaLen)
-rsi = ta.rsi(close, 14)
+# TELEGRAM BOT SOZLAMALARI
+TELEGRAM_BOT_TOKEN = "8839970219:AAHtbNDmsahAOr1Mw86EA7DF-AYFyr2Bh98"
+TELEGRAM_CHAT_ID = "SIZNING_CHAT_IDINGIZ"  # Shu yerga o'z Chat ID'ingizni yozing (masalan: "123456789")
 
-var float lastHigh = na
-var float lastLow = na
-var bool hCrossed = false
-var bool lCrossed = false
-var int trend = 0
-var int lastSig = na
-var float tpLevel = na
-var float slLevel = na
+def telegramga_xabar_yuborish(matn):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    data = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": matn,
+        "parse_mode": "Markdown"
+    }
+    try:
+        requests.post(url, json=data)
+    except Exception as e:
+        print(f"Telegramga xabar yuborishda xatolik: {e}")
 
-ph = ta.pivothigh(high, swingLen, swingLen)
-pl = ta.pivotlow(low, swingLen, swingLen)
+# TradingView Webhook yo'li (Signal kelganda ishlaydi)
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    signal_data = request.data.decode('utf-8')
+    if signal_data:
+        xabar = f"🚨 **Yangi Signal Keldi!**\n\n{signal_data}"
+        print(xabar)
+        telegramga_xabar_yuborish(xabar)
+        return "OK", 200
+    return "Bad Request", 400
 
-lastHigh := not na(ph) ? ph : lastHigh
-hCrossed := not na(ph) ? false : hCrossed
-lastLow  := not na(pl) ? pl : lastLow
-lCrossed := not na(pl) ? false : lCrossed
+# Render porti ochiq turishi uchun asosiy sahifa
+@app.route('/')
+def home():
+    return "Glod Bot Webhook Server Ishlamoqda!", 200
 
-bullBrk = not na(lastHigh) and not hCrossed and ta.crossover(close, lastHigh)
-bearBrk = not na(lastLow) and not lCrossed and ta.crossunder(close, lastLow)
+# Fon rejimidagi tsikl (Bot ishga tushishi bilan 1-signalni tekshirish uchun)
+def background_bot_loop():
+    print(">>> 15M INTERVAL BOT WITH AI & CHARTS STARTED <<<")
+    try:
+        telegramga_xabar_yuborish("🚀 Bot Render'da muvaffaqiyatli ishga tushdi va TradingView signallarini kutmoqda!")
+    except Exception as e:
+        print(f"Boshlang'ich xabarda xatolik: {e}")
 
-prev = trend
-hCrossed := bullBrk ? true : hCrossed
-lCrossed := bearBrk ? true : lCrossed
-trend    := bullBrk ? 1 : bearBrk ? -1 : trend
+    while True:
+        time.sleep(900)  # Har 15 daqiqada kutish
+        print("✅ 15 daqiqalik tsikl bajarilyapti...")
 
-volOk  = not useVol or na(volume) or volume > ta.sma(volume, 20) * 1.2
-bodyOk = math.abs(close - open) > atr * 0.5
-coolOk = na(lastSig) or bar_index - lastSig >= cool
+# Botni alohida thread'da ishga tushirish
+threading.Thread(target=background_bot_loop, daemon=True).start()
 
-buyB  = onlyChoch ? (bullBrk and prev == -1) : bullBrk
-sellB = onlyChoch ? (bearBrk and prev == 1) : bearBrk
-
-buy   = buyB and close > ema and (not useRsi or (rsi > 50 and rsi < 78)) and volOk and bodyOk and coolOk and barstate.isconfirmed
-sell  = sellB and close < ema and (not useRsi or (rsi < 50 and rsi > 22)) and volOk and bodyOk and coolOk and barstate.isconfirmed
-
-sig     = buy or sell
-d       = buy ? 1 : -1
-lastSig := sig ? bar_index : lastSig
-slLevel := sig ? close - d * atr * slMult : slLevel
-tpLevel := sig ? close + d * atr * slMult * rr : tpLevel
-
-// --- GRAFIKGA CHIZISH ---
-plot(ema, "EMA Trend", color=color.new(color.gray, 40))
-plot(tpLevel, "Take Profit (TP)", color=color.green, style=plot.style_linebr)
-plot(slLevel, "Stop Loss (SL)", color=color.red, style=plot.style_linebr)
-
-plotshape(buy, "BUY", shape.labelup, location.belowbar, color=color.new(#089981, 0), text="BUY", textcolor=color.white, size=size.normal)
-plotshape(sell, "SELL", shape.labeldown, location.abovebar, color=color.new(#F23645, 0), text="SELL", textcolor=color.white, size=size.normal)
-
-// --- TELEGRAM BOT UCHUN ALERT (OGOHLANTIRISH) SHARTLARI ---
-alertcondition(buy, title="BUY Signal", message="🟢 SOTIB OLISH (BUY) signali keldi!")
-alertcondition(sell, title="SELL Signal", message="🔴 SOTISH (SELL) signali keldi!")
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
